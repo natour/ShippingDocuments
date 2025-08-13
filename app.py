@@ -5,6 +5,30 @@ import pandas as pd
 import streamlit as st
 from fpdf import FPDF
 
+import unicodedata
+
+def _latinize(s: str) -> str:
+    if s is None:
+        return ""
+    s = str(s)
+    # Common punctuation to ASCII
+    replacements = {
+        "\u2019": "'",
+        "\u2018": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u00A0": " ",
+    }
+    for k, v in replacements.items():
+        s = s.replace(k, v)
+    # Strip accents/diacritics
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    # Ensure latin-1 safe (drop any remaining unsupported chars)
+    return s.encode("latin-1", "ignore").decode("latin-1")
+
 st.set_page_config(page_title="MEA Shipment Checklist (PDF)", layout="wide")
 
 # -------------------- Data --------------------
@@ -219,19 +243,19 @@ def build_pdf(dataframe: pd.DataFrame, meta: dict) -> bytes:
 
     # Meta block
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(28, 6, "Country:"); pdf.set_font("Helvetica", "", 10); pdf.cell(62, 6, meta["country"])
-    pdf.set_font("Helvetica", "B", 10); pdf.cell(26, 6, "Incoterms:"); pdf.set_font("Helvetica", "", 10); pdf.cell(10, 6, meta["incoterm"])
+    pdf.cell(28, 6, _latinize("Country:")); pdf.set_font("Helvetica", "", 10); pdf.cell(62, 6, _latinize(meta["country"]))
+    pdf.set_font("Helvetica", "B", 10); pdf.cell(26, 6, _latinize("Incoterms:")); pdf.set_font("Helvetica", "", 10); pdf.cell(10, 6, _latinize(meta["incoterm"]))
     pdf.ln(6)
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(28, 6, "Mode:"); pdf.set_font("Helvetica", "", 10); pdf.cell(62, 6, meta["mode"])
-    pdf.set_font("Helvetica", "B", 10); pdf.cell(26, 6, "Commodity:"); pdf.set_font("Helvetica", "", 10); pdf.cell(10, 6, meta["commodity"])
+    pdf.cell(28, 6, _latinize("Mode:")); pdf.set_font("Helvetica", "", 10); pdf.cell(62, 6, _latinize(meta["mode"]))
+    pdf.set_font("Helvetica", "B", 10); pdf.cell(26, 6, _latinize("Commodity:")); pdf.set_font("Helvetica", "", 10); pdf.cell(10, 6, _latinize(meta["commodity"]))
     pdf.ln(6)
     if meta.get("shipper") or meta.get("consignee") or meta.get("po"):
-        pdf.set_font("Helvetica", "B", 10); pdf.cell(28, 6, "Shipper:"); pdf.set_font("Helvetica","",10); pdf.cell(62,6, meta.get("shipper",""))
-        pdf.set_font("Helvetica", "B", 10); pdf.cell(26, 6, "Consignee:"); pdf.set_font("Helvetica","",10); pdf.cell(60,6, meta.get("consignee",""))
+        pdf.set_font("Helvetica", "B", 10); pdf.cell(28, 6, _latinize("Shipper:")); pdf.set_font("Helvetica","",10); pdf.cell(62,6, _latinize(meta.get("shipper","")))
+        pdf.set_font("Helvetica", "B", 10); pdf.cell(26, 6, _latinize("Consignee:")); pdf.set_font("Helvetica","",10); pdf.cell(60,6, _latinize(meta.get("consignee","")))
         pdf.ln(6)
         if meta.get("po"):
-            pdf.set_font("Helvetica", "B", 10); pdf.cell(28,6,"PO/Ref:"); pdf.set_font("Helvetica","",10); pdf.cell(62,6, meta.get("po",""))
+            pdf.set_font("Helvetica", "B", 10); pdf.cell(28,6,_latinize("PO/Ref:")); pdf.set_font("Helvetica","",10); pdf.cell(62,6, _latinize(meta.get("po","")))
             pdf.ln(6)
     pdf.ln(2)
 
@@ -240,7 +264,7 @@ def build_pdf(dataframe: pd.DataFrame, meta: dict) -> bytes:
     pdf.set_fill_color(240,240,240)
     pdf.set_font("Helvetica","B",10)
     for text, w in headers:
-        pdf.cell(w, 8, text, border=1, ln=0, align="C", fill=True)
+        pdf.cell(w, 8, _latinize(text), border=1, ln=0, align="C", fill=True)
     pdf.ln(8)
     pdf.set_font("Helvetica","",9)
 
@@ -258,7 +282,7 @@ def build_pdf(dataframe: pd.DataFrame, meta: dict) -> bytes:
         h = _row_height(pdf, cells)
         for (text, w) in cells:
             x = pdf.get_x(); y = pdf.get_y()
-            pdf.multi_cell(w, 5, str(text), border=1, align="L")
+            pdf.multi_cell(w, 5, _latinize(str(text)), border=1, align="L")
             pdf.set_xy(x + w, y)
         pdf.ln(max(h, 5))
 
@@ -266,7 +290,7 @@ def build_pdf(dataframe: pd.DataFrame, meta: dict) -> bytes:
         if note:
             pdf.set_font("Helvetica","I",9)
             pdf.cell(16, 6, "", border="L")
-            pdf.multi_cell(162, 6, "Notes: " + note, border="R")
+            pdf.multi_cell(162, 6, _latinize("Notes: " + note), border="R")
             pdf.set_font("Helvetica","",9)
             pdf.cell(16, 0, "", border="L")
             pdf.cell(162, 0, "", border="R")
@@ -274,9 +298,9 @@ def build_pdf(dataframe: pd.DataFrame, meta: dict) -> bytes:
 
     pdf.ln(2)
     pdf.set_font("Helvetica","B",10)
-    pdf.cell(0, 6, f"Status: {meta['status']}", ln=1)
+    pdf.cell(0, 6, _latinize(f"Status: {meta['status']}"), ln=1)
     pdf.set_font("Helvetica","",9)
-    pdf.cell(0, 6, f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=1)
+    pdf.cell(0, 6, _latinize(f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}"), ln=1)
 
     return bytes(pdf.output(dest="S").encode("latin-1"))
 
