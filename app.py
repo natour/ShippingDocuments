@@ -1,42 +1,45 @@
 import io
-import os
-from pathlib import Path
 from datetime import datetime
+import unicodedata
 
 import pandas as pd
 import streamlit as st
 from fpdf import FPDF
-import requests
 
-st.set_page_config(page_title="MEA Shipment Checklist (PDF)", layout="wide")
+st.set_page_config(page_title="MEA Shipment Checklist (PDF – ASCII-safe)", layout="wide")
 
-# -------------------- Font setup (Unicode-safe) --------------------
-FONTS_DIR = Path(__file__).parent / "fonts"
-FONTS_DIR.mkdir(exist_ok=True)
-TTF_PATH = FONTS_DIR / "DejaVuSans.ttf"
+# -------------------- Helpers --------------------
+def ascii_safe(s: str) -> str:
+    if s is None:
+        return ""
+    s = str(s)
+    # Replace common curly punctuation and NBSP
+    replacements = {
+        "\u2019": "'",
+        "\u2018": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u00A0": " ",
+    }
+    for k, v in replacements.items():
+        s = s.replace(k, v)
+    # Strip accents and drop non-ascii
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    s = s.encode("ascii", "ignore").decode("ascii")
+    # Collapse excess whitespace
+    return " ".join(s.split())
 
-DEJAVU_URL = "https://github.com/dejavu-fonts/dejavu-fonts/raw/version_2_37/ttf/DejaVuSans.ttf"
-FALLBACK_URL = "https://github.com/google/fonts/raw/main/apache/roboto/Roboto-Regular.ttf"  # broad Latin coverage
-
-def ensure_ttf() -> Path:
-    if TTF_PATH.exists() and TTF_PATH.stat().st_size > 100000:
-        return TTF_PATH
-    url_list = [DEJAVU_URL, FALLBACK_URL]
-    for url in url_list:
-        try:
-            r = requests.get(url, timeout=20)
-            if r.ok and len(r.content) > 100000:
-                TTF_PATH.write_bytes(r.content)
-                return TTF_PATH
-        except Exception:
-            pass
-    # As a last resort, write a tiny marker file so app still runs; PDF may fail for complex chars
-    if not TTF_PATH.exists():
-        TTF_PATH.write_bytes(b"")
-    return TTF_PATH
+def ascii_df(df: pd.DataFrame) -> pd.DataFrame:
+    df2 = df.copy()
+    for col in df2.columns:
+        if df2[col].dtype == object:
+            df2[col] = df2[col].map(ascii_safe)
+    return df2
 
 # -------------------- Data --------------------
-
 MIDDLE_EAST = [
     "Bahrain","Cyprus","Iran","Iraq","Israel","Jordan","Kuwait","Lebanon","Oman",
     "Palestine","Qatar","Saudi Arabia","Syria","Turkey","United Arab Emirates","Yemen","Egypt"
@@ -45,7 +48,7 @@ AFRICA = [
     "Algeria","Angola","Benin","Botswana","Burkina Faso","Burundi","Cabo Verde","Cameroon",
     "Central African Republic","Chad","Comoros","Congo (Republic)","Congo (DRC)","Djibouti",
     "Equatorial Guinea","Eritrea","Eswatini","Ethiopia","Gabon","Gambia","Ghana","Guinea",
-    "Guinea-Bissau","Côte d’Ivoire","Kenya","Lesotho","Liberia","Libya","Madagascar",
+    "Guinea-Bissau","Cote d'Ivoire","Kenya","Lesotho","Liberia","Libya","Madagascar",
     "Malawi","Mali","Mauritania","Mauritius","Morocco","Mozambique","Namibia","Niger",
     "Nigeria","Rwanda","Sao Tome and Principe","Senegal","Seychelles","Sierra Leone","Somalia",
     "South Africa","South Sudan","Sudan","Tanzania","Togo","Tunisia","Uganda","Zambia","Zimbabwe"
@@ -124,14 +127,14 @@ COUNTRY_SPECIFIC["Zimbabwe"] += [("CBCA Certificate (regulated)","Conditional","
 COUNTRY_SPECIFIC["Zambia"] += [("ZABS CoC (regulated)","Conditional","Importer","Any","Any","Any","Bureau of Standards conformity for selected goods.")]
 for c in ["Botswana","Lesotho","Namibia","Eswatini"]:
     COUNTRY_SPECIFIC[c] += [("Import Permit (regulated)","Conditional","Importer","Any","Any","Any","Permits for selected goods (SACU).")]
-for c in ["Senegal","Côte d’Ivoire","Mali","Burkina Faso","Niger","Guinea","Guinea-Bissau","Togo","Benin"]:
-    COUNTRY_SPECIFIC[c] += [("VoC/CoC (regulated)","Conditional","Importer","Any","Any","Any","Verification/Certificate of Conformity via appointed agencies. ")]
+for c in ["Senegal","Cote d'Ivoire","Mali","Burkina Faso","Niger","Guinea","Guinea-Bissau","Togo","Benin"]:
+    COUNTRY_SPECIFIC[c] += [("VoC/CoC (regulated)","Conditional","Importer","Any","Any","Any","Verification/Certificate of Conformity via appointed agencies.")]
 for c in ["Cameroon","Gabon","Congo (Republic)","Congo (DRC)","Chad","Central African Republic","Equatorial Guinea"]:
     COUNTRY_SPECIFIC[c] += [("VoC/CoC (regulated)","Conditional","Importer","Any","Any","Any","Pre-shipment conformity assessment common.")]
 for c in ["Somalia","Sudan","South Sudan","Eritrea","Djibouti"]:
     COUNTRY_SPECIFIC[c] += [("Legalized Invoice & COO","Conditional","Shipper","Any","Any","Any","Embassy/consulate legalization often required.")]
-COUNTRY_SPECIFIC["Mauritius"] += [("Import Permit (regulated)","Conditional","Importer","Any","Any","Any","Permits for regulated electronics/telecom as required.")]
-COUNTRY_SPECIFIC["Seychelles"] += [("Import Permit (regulated)","Conditional","Importer","Any","Any","Any","Permits for hazardous or regulated goods. ")]
+COUNTRY_SPECIFIC["Mauritius"] += [("Import Permit (regulated)","Conditional","Importer","Any","Any","Any","Permits for regulated electronics/telecom as required. ")]
+COUNTRY_SPECIFIC["Seychelles"] += [("Import Permit (regulated)","Conditional","Importer","Any","Any","Any","Permits for hazardous or regulated goods.")]
 COUNTRY_SPECIFIC["Cabo Verde"] += [("Import Permit (regulated)","Conditional","Importer","Any","Any","Any","Importer secures permit where required.")]
 COUNTRY_SPECIFIC["Sao Tome and Principe"] += [("Import Permit (regulated)","Conditional","Importer","Any","Any","Any","Importer secures permit where required.")]
 COUNTRY_SPECIFIC["Comoros"] += [("Import Permit (regulated)","Conditional","Importer","Any","Any","Any","Importer secures permit where required.")]
@@ -177,8 +180,8 @@ df_sel = filter_rows(df_master, country, incoterm, mode, commodity)
 work_df = df_sel[["Document","Mandatory","Responsibility","Notes","Legalization","Risk Flag"]].copy()
 work_df.insert(3, "Provided?", False)
 
-st.title("MEA Shipment Checklist")
-st.caption("Generate a customer-facing checklist as a **PDF** (no Excel needed).")
+st.title("MEA Shipment Checklist (ASCII-safe)")
+st.caption("PDF export uses ASCII-safe encoding to avoid font issues on any platform.")
 
 c1, c2, c3 = st.columns([2,2,3])
 with c1:
@@ -210,83 +213,66 @@ edited = st.data_editor(
 mandatory_mask = edited["Mandatory"] == "Yes"
 mandatory_total = int(mandatory_mask.sum())
 provided_yes = int(((edited["Provided?"] == True) & mandatory_mask).sum())
-status = "READY ✅" if (mandatory_total > 0 and provided_yes == mandatory_total) else ("No mandatory docs" if mandatory_total == 0 else f"PENDING ⏳ ({provided_yes}/{mandatory_total})")
+status = "READY" if (mandatory_total > 0 and provided_yes == mandatory_total) else ("No mandatory docs" if mandatory_total == 0 else f"PENDING ({provided_yes}/{mandatory_total})")
 
 st.info(f"**Ready to Ship?** {status}")
 
-# -------------------- PDF Generation --------------------
+# -------------------- PDF Generation (ASCII-safe) --------------------
 class PDF(FPDF):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        ttf = ensure_ttf()
-        # Register Unicode font
-        if ttf.exists() and ttf.stat().st_size > 0:
-            self.add_font("DejaVu", "", str(ttf), uni=True)
-            self.set_font("DejaVu", size=10)
-        else:
-            # Fallback to core font; limited charset
-            self.set_font("Helvetica", size=10)
-
     def header(self):
-        self.set_font(self.font_family, "B", 12)
+        self.set_font("Helvetica", "B", 12)
         self.cell(0, 10, "MEA Shipment Checklist", ln=1, align="C")
-        self.set_font(self.font_family, "", 9)
+        self.set_font("Helvetica", "", 9)
         self.set_text_color(80, 80, 80)
-        self.cell(0, 6, "This document is a practical guide. Verify country-specific requirements with your broker/forwarder.", ln=1, align="C")
+        self.cell(0, 6, "Guide only. Verify with broker/forwarder based on HS code.", ln=1, align="C")
         self.ln(2)
         self.set_text_color(0, 0, 0)
 
     def footer(self):
         self.set_y(-12)
-        self.set_font(self.font_family, "I", 8)
+        self.set_font("Helvetica", "I", 8)
         self.cell(0, 10, f"Page {self.page_no()}", align="C")
 
-def _row_height(pdf, cells):
-    max_lines = 1
-    for text, w in cells:
-        # rough estimate for Unicode font
-        chars_per_line = int(w / 2.4)
-        lines = max(1, (len(str(text)) // max(chars_per_line,1)) + 1)
-        if lines > max_lines:
-            max_lines = lines
-    return max_lines * 5
-
 def build_pdf(dataframe: pd.DataFrame, meta: dict) -> bytes:
+    # Clean all strings to ASCII before rendering
+    df_clean = ascii_df(dataframe)
+    meta_clean = {k: ascii_safe(v) for k, v in meta.items()}
+
     pdf = PDF(orientation="P", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
-    pdf.set_font_size(10)
+    pdf.set_font("Helvetica", "", 10)
 
     # Meta block
-    pdf.set_font(style="B")
-    pdf.cell(28, 6, "Country:"); pdf.set_font(style=""); pdf.cell(62, 6, meta["country"])
-    pdf.set_font(style="B"); pdf.cell(26, 6, "Incoterms:"); pdf.set_font(style=""); pdf.cell(20, 6, meta["incoterm"])
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(28, 6, "Country:"); pdf.set_font("Helvetica", "", 10); pdf.cell(62, 6, meta_clean["country"])
+    pdf.set_font("Helvetica", "B", 10); pdf.cell(26, 6, "Incoterms:"); pdf.set_font("Helvetica", "", 10); pdf.cell(20, 6, meta_clean["incoterm"])
     pdf.ln(6)
-    pdf.set_font(style="B")
-    pdf.cell(28, 6, "Mode:"); pdf.set_font(style=""); pdf.cell(62, 6, meta["mode"])
-    pdf.set_font(style="B"); pdf.cell(26, 6, "Commodity:"); pdf.set_font(style=""); pdf.cell(20, 6, meta["commodity"])
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(28, 6, "Mode:"); pdf.set_font("Helvetica", "", 10); pdf.cell(62, 6, meta_clean["mode"])
+    pdf.set_font("Helvetica", "B", 10); pdf.cell(26, 6, "Commodity:"); pdf.set_font("Helvetica", "", 10); pdf.cell(20, 6, meta_clean["commodity"])
     pdf.ln(6)
-    if meta.get("shipper") or meta.get("consignee") or meta.get("po"):
-        pdf.set_font(style="B"); pdf.cell(28, 6, "Shipper:"); pdf.set_font(style=""); pdf.cell(62, 6, meta.get("shipper",""))
-        pdf.set_font(style="B"); pdf.cell(26, 6, "Consignee:"); pdf.set_font(style=""); pdf.cell(60, 6, meta.get("consignee",""))
+    if meta_clean.get("shipper") or meta_clean.get("consignee") or meta_clean.get("po"):
+        pdf.set_font("Helvetica", "B", 10); pdf.cell(28, 6, "Shipper:"); pdf.set_font("Helvetica","",10); pdf.cell(62,6, meta_clean.get("shipper",""))
+        pdf.set_font("Helvetica", "B", 10); pdf.cell(26, 6, "Consignee:"); pdf.set_font("Helvetica","",10); pdf.cell(60,6, meta_clean.get("consignee",""))
         pdf.ln(6)
-        if meta.get("po"):
-            pdf.set_font(style="B"); pdf.cell(28,6,"PO/Ref:"); pdf.set_font(style=""); pdf.cell(62,6, meta.get("po",""))
+        if meta_clean.get("po"):
+            pdf.set_font("Helvetica", "B", 10); pdf.cell(28,6,"PO/Ref:"); pdf.set_font("Helvetica","",10); pdf.cell(62,6, meta_clean.get("po",""))
             pdf.ln(6)
     pdf.ln(2)
 
     # Table header
     headers = [("Provided",16), ("Document",82), ("Mandatory",20), ("Resp.",20), ("Legal.",20), ("Risk",20)]
     pdf.set_fill_color(240,240,240)
-    pdf.set_font(style="B")
+    pdf.set_font("Helvetica","B",10)
     for text, w in headers:
         pdf.cell(w, 8, text, border=1, ln=0, align="C", fill=True)
     pdf.ln(8)
-    pdf.set_font(style="")
+    pdf.set_font("Helvetica","",9)
 
     # Table rows
-    for _, row in dataframe.iterrows():
-        provided = "Yes" if bool(row.get("Provided?", False)) else "No"
+    for _, row in df_clean.iterrows():
+        provided = "Yes" if row.get("Provided?", "") in [True, "True", "Yes"] else "No"
         cells = [
             (provided, 16),
             (str(row["Document"]), 82),
@@ -295,32 +281,32 @@ def build_pdf(dataframe: pd.DataFrame, meta: dict) -> bytes:
             (row["Legalization"], 20),
             (row["Risk Flag"], 20),
         ]
-        h = _row_height(pdf, cells)
+        # Render cells with MultiCell
         for (text, w) in cells:
             x = pdf.get_x(); y = pdf.get_y()
-            pdf.multi_cell(w, 5, str(text), border=1, align="L")
+            pdf.multi_cell(w, 5, ascii_safe(text), border=1, align="L")
             pdf.set_xy(x + w, y)
-        pdf.ln(max(h, 5))
+        pdf.ln(5)
 
-        note = str(row.get("Notes", "") or "").strip()
+        note = ascii_safe(row.get("Notes", ""))
         if note:
-            pdf.set_font(style="I")
+            pdf.set_font("Helvetica","I",9)
             pdf.cell(16, 6, "", border="L")
             pdf.multi_cell(162, 6, "Notes: " + note, border="R")
-            pdf.set_font(style="")
+            pdf.set_font("Helvetica","",9)
             pdf.cell(16, 0, "", border="L")
             pdf.cell(162, 0, "", border="R")
             pdf.ln(2)
 
     # Summary/status
     pdf.ln(2)
-    pdf.set_font(style="B")
-    pdf.cell(0, 6, f"Status: {meta['status']}", ln=1)
-    pdf.set_font(style="")
+    pdf.set_font("Helvetica","B",10)
+    pdf.cell(0, 6, f"Status: {ascii_safe(meta_clean['status'])}", ln=1)
+    pdf.set_font("Helvetica","",9)
     pdf.cell(0, 6, f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=1)
 
     # Return bytes
-    return bytes(pdf.output(dest="S"), encoding="latin-1", errors="ignore")  # safe for Streamlit download
+    return pdf.output(dest="S").encode("latin-1")
 
 # -------------------- Actions --------------------
 meta = {
@@ -342,9 +328,9 @@ with colB:
 
 if generate:
     pdf_bytes = build_pdf(edited, meta)
-    filename = f"Shipment_Checklist_{country}_{incoterm}_{mode}_{datetime.now().strftime('%Y%m%d')}.pdf".replace(" ", "_")
+    filename = f"Shipment_Checklist_{ascii_safe(country)}_{incoterm}_{mode}_{datetime.now().strftime('%Y%m%d')}.pdf".replace(" ","_")
     st.download_button("⬇️ Download PDF", data=pdf_bytes, file_name=filename, mime="application/pdf")
     st.success("PDF generated.")
 
 st.markdown('---')
-st.caption("Disclaimer: Requirements can change. Confirm with your customs broker/forwarder for the latest rules per HS code.")
+st.caption("Note: This ASCII-safe build removes accents/emoji to guarantee PDF compatibility on any host.")
