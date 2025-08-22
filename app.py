@@ -329,7 +329,7 @@ with colB:
 if generate:
     pdf_bytes = build_pdf(edited, meta)
     filename = f"Shipment_Checklist_{ascii_safe(country)}_{incoterm}_{mode}_{datetime.now().strftime('%Y%m%d')}.pdf".replace(" ","_")
-    st.download_button("⬇️ Download PDF", data=pdf_bytes, file_name=filename, mime="application/pdf")
+    st.download_button("⬇️ Download PDF", data=io.BytesIO(pdf_bytes), file_name=filename, mime="application/pdf")
     st.success("PDF generated.")
 
 st.markdown('---')
