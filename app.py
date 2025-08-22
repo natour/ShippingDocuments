@@ -306,7 +306,7 @@ def build_pdf(dataframe: pd.DataFrame, meta: dict) -> bytes:
     pdf.cell(0, 6, f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=1)
 
     # Return bytes
-    return pdf.output(dest="S").encode("utf-8")
+    return pdf.output(dest="S")
 
 # -------------------- Actions --------------------
 meta = {
